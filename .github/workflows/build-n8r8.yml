@@ -30,6 +30,8 @@ jobs:
           cp patch-repo/scripts/patch_config.py upstream/
           cd upstream
           python3 patch_config.py
+          echo "=== patched config.json ==="
+          cat main/boards/bread-compact-wifi/config.json
 
       - name: Build firmware
         shell: bash
@@ -39,11 +41,14 @@ jobs:
           python scripts/build.py bread-compact-wifi --name bread-compact-wifi-n8r8
 
       - name: List build outputs
+        if: always()
         run: |
           echo "=== build dir ==="
-          ls -lh upstream/build/ || true
+          ls -lh upstream/build/ 2>/dev/null || true
           echo "=== releases ==="
-          ls -lh upstream/releases/ || true
+          ls -lh upstream/releases/ 2>/dev/null || true
+          echo "=== sdkconfig flash/partition ==="
+          grep -E 'FLASHSIZE|PARTITION_TABLE' upstream/sdkconfig 2>/dev/null || true
 
       - name: Upload firmware artifact
         uses: actions/upload-artifact@v4
