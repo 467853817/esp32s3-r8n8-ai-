@@ -1,0 +1,55 @@
+name: Build Xiaozhi for ESP32-S3-N8R8
+
+on:
+  workflow_dispatch:   # 手机手动触发
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: espressif/idf:v6.1
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+
+      - name: Clone upstream v2.5.0
+        run: |
+          git clone --depth 1 --branch v2.5.0 https://github.com/78/xiaozhi-esp32.git upstream
+          cd upstream
+          # 打补丁：强制 8MB + 8m 分区表
+          python3 -c '
+import json
+from pathlib import Path
+p = Path("main/boards/bread-compact-wifi/config.json")
+cfg = json.loads(p.read_text())
+for b in cfg["builds"]:
+    if b["name"] == "bread-compact-wifi":
+        b["sdkconfig_append"] = [
+            "CONFIG_OLED_SSD1306_128X32=y",
+            "CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y",
+            "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\\\"partitions/v2/8m.csv\\\""
+        ]
+p.write_text(json.dumps(cfg, indent=4, ensure_ascii=False) + "\n")
+print("patched config.json")
+'
+
+      - name: Build
+        shell: bash
+        run: |
+          source $IDF_PATH/export.sh
+          cd upstream
+          python scripts/build.py bread-compact-wifi --name bread-compact-wifi-n8r8
+
+      - name: Upload firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: xiaozhi-v2.5.0-bread-compact-wifi-n8r8
+          path: |
+            upstream/build/merged-binary.bin
+            upstream/releases/*.zip
+          if-no-files-found: error
