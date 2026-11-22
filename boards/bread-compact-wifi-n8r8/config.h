@@ -66,4 +66,9 @@
 // A MCP Test: Control a lamp
 #define LAMP_GPIO GPIO_NUM_18
 
+// 土壤湿度传感器 (YL-69 / 类似模块)
+// AO 接模拟口，DO 接数字口（可选）
+#define SOIL_MOISTURE_AO_GPIO   GPIO_NUM_1   // ADC1_CH0
+#define SOIL_MOISTURE_DO_GPIO   GPIO_NUM_38  // 数字干湿阈值输出
+
 #endif // _BOARD_CONFIG_H_
