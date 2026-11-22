@@ -10,13 +10,13 @@ permissions:
 
 jobs:
   build:
-    name: Build bread-compact-wifi (8MB)
+    name: Build bread-compact-wifi-n8r8 (8MB)
     runs-on: ubuntu-latest
     container:
       image: espressif/idf:v6.1
 
     steps:
-      - name: Checkout this repo (patch script)
+      - name: Checkout this repo (board overlay)
         uses: actions/checkout@v4
         with:
           path: patch-repo
@@ -25,13 +25,18 @@ jobs:
         run: |
           git clone --depth 1 --branch v2.5.0 https://github.com/78/xiaozhi-esp32.git upstream
 
-      - name: Apply 8MB Flash patch
+      - name: Overlay N8R8 board source
         run: |
-          cp patch-repo/scripts/patch_config.py upstream/
-          cd upstream
-          python3 patch_config.py
-          echo "=== patched config.json ==="
-          cat main/boards/bread-compact-wifi/config.json
+          set -e
+          SRC=patch-repo/boards/bread-compact-wifi-n8r8
+          DST=upstream/main/boards/bread-compact-wifi
+          echo "=== overlay board files ==="
+          ls -la "$SRC"
+          cp "$SRC/config.json" "$DST/config.json"
+          cp "$SRC/config.h" "$DST/config.h"
+          cp "$SRC/compact_wifi_board.cc" "$DST/compact_wifi_board.cc"
+          echo "=== config.json after overlay ==="
+          cat "$DST/config.json"
 
       - name: Build firmware
         shell: bash

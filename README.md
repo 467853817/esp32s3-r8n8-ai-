@@ -1,12 +1,34 @@
-# ESP32-S3-N8R8 小智 AI 固件（手机可编译）
+# ESP32-S3-N8R8 小智 AI 固件（手机可编译 / 可改源码）
 
-本仓库专门为 **ESP32-S3-N8R8**（8MB Flash + 8MB Octal PSRAM）制作可直接用手机烧录的小智 AI 固件。
+本仓库为 **ESP32-S3-N8R8**（8MB Flash + 8MB Octal PSRAM）提供可直接用手机编译、烧录的小智 AI 固件。
 
-基于官方 [78/xiaozhi-esp32](https://github.com/78/xiaozhi-esp32) **v2.5.0**，板级配置使用 `bread-compact-wifi`（0.91 寸 128×32 SSD1306 OLED），并强制使用 **8MB 分区表**。
+基于官方 [78/xiaozhi-esp32](https://github.com/78/xiaozhi-esp32) **v2.5.0**，板级配置使用 `bread-compact-wifi`（0.91 寸 128×32 SSD1306 OLED），并强制 **8MB 分区表**。
 
 ---
 
-## 1. 硬件确认（已核对源码）
+## 0. 可修改的板级源码（重点）
+
+适配相关源码已放在仓库内，**可直接改**：
+
+```
+boards/bread-compact-wifi-n8r8/
+├── config.h                 # 引脚定义（麦克风/功放/OLED/按键）
+├── config.json              # 8MB Flash、分区表、构建名
+├── compact_wifi_board.cc    # 板级初始化与按键逻辑
+└── README.md
+```
+
+修改方式（手机也可）：
+
+1. 打开仓库 → 进入 `boards/bread-compact-wifi-n8r8/`
+2. 点开 `config.h` 或其它文件 → 铅笔图标编辑 → Commit
+3. 到 **Actions** 里重新 **Run workflow**，下载新固件
+
+编译时会把该目录覆盖到上游 `main/boards/bread-compact-wifi/` 再构建。
+
+---
+
+## 1. 硬件确认
 
 | 项目 | 配置 |
 |------|------|
@@ -14,90 +36,72 @@
 | OLED | 0.91 寸 128×32 SSD1306，I²C 地址 0x3C |
 | 麦克风 | INMP441（I²S） |
 | 功放 | MAX98357A（I²S） |
-| 分区 | `partitions/v2/8m.csv`（ota_0/ota_1 各约 3MB，assets 2MB） |
-| PSRAM | Octal 80MHz（上游 `sdkconfig.defaults.esp32s3` 已正确） |
+| 分区 | `partitions/v2/8m.csv`（ota 各约 3MB，assets 2MB @ `0x600000`） |
+| PSRAM | Octal 80MHz（上游 sdkconfig.defaults.esp32s3 已正确） |
 
-### 接线表（面包板 + 杜邦线）
+### 接线表
 
 **OLED**
-- GND → GND
-- VCC → 3.3V
-- SCL → **GPIO42**
-- SDA → **GPIO41**
+- GND → GND　VCC → 3.3V　SCL → **GPIO42**　SDA → **GPIO41**
 
-**INMP441 麦克风**
-- VDD → 3.3V
-- GND → GND
-- WS  → **GPIO4**
-- SCK → **GPIO5**
-- SD  → **GPIO6**
-- L/R → GND（左声道）
+**INMP441**
+- VDD → 3.3V　GND → GND　WS → **GPIO4**　SCK → **GPIO5**　SD → **GPIO6**　L/R → GND
 
-**MAX98357A 功放 + 喇叭**
-- VIN → 5V（或模块支持的 3.3V）
-- GND → GND
-- DIN → **GPIO7**
-- BCLK → **GPIO15**
-- LRC → **GPIO16**
+**MAX98357A**
+- VIN → 5V（或模块支持的 3.3V）　GND → GND　DIN → **GPIO7**　BCLK → **GPIO15**　LRC → **GPIO16**
 
-板载 RGB LED = GPIO48，BOOT 按钮 = GPIO0。
-以上引脚已避开 Octal PSRAM 占用的 GPIO33–37。
+板载 RGB LED = GPIO48，BOOT = GPIO0。引脚已避开 Octal PSRAM 的 GPIO33–37。
 
 ---
 
-## 2. 如何用手机编译（GitHub Actions）
+## 2. 手机编译（GitHub Actions）
 
-1. 打开本仓库页面：https://github.com/467853817/esp32s3-r8n8-ai-
-2. 点击上方 **Actions** 标签。
-3. 左侧选择 **Build Xiaozhi for ESP32-S3-N8R8**。
-4. 右侧点击 **Run workflow** → 选 `main` → 再点绿色 **Run workflow**。
-5. 等待约 10–20 分钟（第一次会下载 ESP-IDF 和依赖）。
-6. 编译成功后，点进最新一次运行记录 → 最下方 **Artifacts** → 下载 `xiaozhi-v2.5.0-bread-compact-wifi-n8r8`。
-7. 解压后得到 `merged-binary.bin`（或 zip 里的同名文件）。
+1. 打开：https://github.com/467853817/esp32s3-r8n8-ai-
+2. **Actions** → **Build Xiaozhi for ESP32-S3-N8R8** → **Run workflow**
+3. 约 10–20 分钟后，Artifacts 下载 `xiaozhi-v2.5.0-bread-compact-wifi-n8r8`
+4. 解压得到 `merged-binary.bin`
 
-> 如果 Actions 页面提示未启用，请到仓库 **Settings → Actions → General**，选择 **Allow all actions and reusable workflows** 并保存。
+若 Actions 被禁用：Settings → Actions → General → Allow all actions。
 
 ---
 
-## 3. 用手机烧录（esp flasher）
+## 3. 手机烧录主固件（ESPFlash）
 
-81. 手机安装 **ESPFlash**
-2. 开发板用**支持数据的 USB-C 线**通过 OTG 接到手机。
-   - 双 USB-C 板子：先试靠近芯片/天线一侧的口，进不了下载模式就换另一个。
-3. 进入下载模式：
-   - 按住 **BOOT** 不放 → 点一下 **RST** → 松开 BOOT。
-4. 打开 ESPFlash：
-   - 芯片选择 **ESP32-S3**
-   - 烧录地址填 **0x0**
-   - 选择刚才下载的 `merged-binary.bin`
-   - 开始烧录。
-5. 烧完后按一下 **RST** 重启。
+1. 芯片 **ESP32-S3**，地址 **0x0**，选 `merged-binary.bin`
+2. 进下载模式：按住 **BOOT** → 点 **RST** → 松开 BOOT
+3. 烧完按 RST 重启
+
+### 单独烧 assets（唤醒词等，不抹主程序）
+
+- 地址：**`0x600000`**
+- 文件：`assets.bin`
+- 模式：**Raw Binary / As Raw**
+- 不要用 0x0 烧 assets，否则会覆盖主程序
 
 ---
 
 ## 4. 配网与测试
 
-- 首次启动后，OLED 会显示状态或提示配网。没有oled则在手机设置连接esp32s3的热点，连接后会进入配网网址，无需按boot键
-- 按 **BOOT** 键可进入配网模式（具体提示以固件为准）。
-- 连接成功后，按 BOOT 开始对话；触摸/音量按键为可选功能。
-- 小智服务端需要设备激活，按固件提示操作即可
+- 首次启动按提示配网；或连设备热点后按网页提示操作
+- 短按 **BOOT** 开始/结束对话
+- 需要离线唤醒时，再烧入对应的 `assets.bin` 到 `0x600000`
+
 ---
 
 ## 5. 失败排查
 
-| 现象 | 可能原因 | 处理 |
-|------|----------|------|
-| Actions 直接失败且没有日志 | 仓库未开启 Actions | Settings → Actions → Allow all actions |
-| 编译报分区/Flash 错误 | 补丁没生效 | 看日志是否有 “OK: config.json patched” |
-| 烧录后黑屏/重启循环 | 没进下载模式或烧错口 | 重新按 BOOT+RST 进下载模式，换 USB 口 |
-| OLED 无显示 | 接线或地址不对 | 确认 SDA=41 SCL=42，地址 0x3C |
-| 有画面但无声音 | 音频模块未接或接线错 | 按上面引脚表重接 |
-| PSRAM 报错 | 极少见（上游已配 Octal） | 检查串口日志|
+| 现象 | 处理 |
+|------|------|
+| Actions 无日志 | 开启仓库 Actions 权限 |
+| 编译失败 | 看日志是否成功 Overlay 了 board 文件 |
+| 烧录后黑屏 | 重新 BOOT+RST 进下载模式，换 USB 口 |
+| OLED 无显示 | 确认 SDA=41 SCL=42 |
+| 无声音 | 按接线表重接麦/喇叭；短按 BOOT 再试 |
+| assets 烧录报 segment size | 必须用 Raw/As Raw，地址 0x600000 |
 
 ---
 
-## 6. 重要说明
+## 6. 说明
 
-- 本仓库**只包含** GitHub Actions 工作流和补丁脚本，**不包含**完整源码。每次构建会自动拉取官方 v2.5.0 标签。
-- 不要直接使用 16302.com 上的预编译固件，除非确认它使用了 8MB 分区表。
-
+- 完整上游工程仍由 Actions 每次拉取官方 v2.5.0；本仓库只维护 **N8R8 板级覆盖层** 与编译脚本。
+- 旧版 `scripts/patch_config.py` 已不再作为主流程（逻辑已固化进 `boards/.../config.json`）。
