@@ -14,12 +14,19 @@
 #include <driver/i2c_master.h>
 #include <esp_lcd_panel_ops.h>
 #include <esp_lcd_panel_vendor.h>
+#include <esp_adc/adc_oneshot.h>
+#include <driver/gpio.h>
 
 #ifdef SH1106
 #include <esp_lcd_panel_sh1106.h>
 #endif
 
 #define TAG "CompactWifiBoard"
+
+// 土壤传感器粗略校准（可根据实际传感器微调）
+// 数值越大越干，越小越湿
+static const int SOIL_ADC_DRY  = 3200;  // 空气中/极干
+static const int SOIL_ADC_WET  = 1200;  // 浸水
 
 class CompactWifiBoard : public WifiBoard {
 private:
@@ -31,6 +38,79 @@ private:
     Button touch_button_;
     Button volume_up_button_;
     Button volume_down_button_;
+
+    adc_oneshot_unit_handle_t adc_handle_ = nullptr;
+    bool soil_mode_ = false;
+
+    void InitializeSoilSensor() {
+        // ADC1 oneshot
+        adc_oneshot_unit_init_cfg_t init_config = {
+            .unit_id = ADC_UNIT_1,
+            .ulp_mode = ADC_ULP_MODE_DISABLE,
+        };
+        ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config, &adc_handle_));
+
+        adc_oneshot_chan_cfg_t chan_config = {
+            .atten = ADC_ATTEN_DB_12,
+            .bitwidth = ADC_BITWIDTH_DEFAULT,
+        };
+        // GPIO1 = ADC1_CHANNEL_0
+        ESP_ERROR_CHECK(adc_oneshot_config_channel(adc_handle_, ADC_CHANNEL_0, &chan_config));
+
+        // DO 脚配置为输入（可选）
+        gpio_config_t io_conf = {};
+        io_conf.intr_type = GPIO_INTR_DISABLE;
+        io_conf.mode = GPIO_MODE_INPUT;
+        io_conf.pin_bit_mask = (1ULL << SOIL_MOISTURE_DO_GPIO);
+        io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
+        io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
+        gpio_config(&io_conf);
+
+        ESP_LOGI(TAG, "Soil moisture sensor initialized (AO=GPIO1, DO=GPIO38)");
+    }
+
+    int ReadSoilRaw() {
+        int raw = 0;
+        if (adc_handle_ && adc_oneshot_read(adc_handle_, ADC_CHANNEL_0, &raw) == ESP_OK) {
+            return raw;
+        }
+        return -1;
+    }
+
+    int ReadSoilPercent() {
+        int raw = ReadSoilRaw();
+        if (raw < 0) return -1;
+
+        // 映射到 0~100%，干=0，湿=100
+        int percent = 100 - ((raw - SOIL_ADC_WET) * 100) / (SOIL_ADC_DRY - SOIL_ADC_WET);
+        if (percent < 0) percent = 0;
+        if (percent > 100) percent = 100;
+        return percent;
+    }
+
+    const char* GetSoilStatus(int percent) {
+        if (percent < 0) return "读取失败";
+        if (percent < 30) return "偏干";
+        if (percent < 60) return "适中";
+        return "偏湿";
+    }
+
+    void ShowSoilMoisture() {
+        int percent = ReadSoilPercent();
+        int raw = ReadSoilRaw();
+        std::string msg;
+
+        if (percent < 0) {
+            msg = "土壤湿度: 读取失败";
+        } else {
+            msg = "土壤 " + std::to_string(percent) + "% " + GetSoilStatus(percent);
+            // 可选：显示原始值方便校准
+            // msg += " (" + std::to_string(raw) + ")";
+        }
+
+        ESP_LOGI(TAG, "Soil: %d%% (raw=%d)", percent, raw);
+        GetDisplay()->ShowNotification(msg);
+    }
 
     void InitializeDisplayI2c() {
         i2c_master_bus_config_t bus_config = {
@@ -101,6 +181,7 @@ private:
     }
 
     void InitializeButtons() {
+        // 短按：原功能（对话切换 / 配网）
         boot_button_.OnClick([this]() {
             auto& app = Application::GetInstance();
             if (app.GetDeviceState() == kDeviceStateStarting) {
@@ -109,6 +190,12 @@ private:
             }
             app.ToggleChatState();
         });
+
+        // 长按 BOOT：显示当前土壤湿度
+        boot_button_.OnLongPress([this]() {
+            ShowSoilMoisture();
+        });
+
         touch_button_.OnPressDown([this]() {
             Application::GetInstance().StartListening();
         });
@@ -160,6 +247,7 @@ public:
         volume_down_button_(VOLUME_DOWN_BUTTON_GPIO) {
         InitializeDisplayI2c();
         InitializeSsd1306Display();
+        InitializeSoilSensor();
         InitializeButtons();
         InitializeTools();
     }
